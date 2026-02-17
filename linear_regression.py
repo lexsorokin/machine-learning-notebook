@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib.pyplot as plt
+
 
 def linear_model(w, x, b):
     """
@@ -7,7 +9,7 @@ def linear_model(w, x, b):
     For LR with one variable w & x are scalar
     For LR with multiple variables w & x are vectors
     """ 
-    return np.dot(w, x) + b
+    return X @ w + b
 
 
 def compute_cost(x, y, w, b, lambda_ = 1):
@@ -142,14 +144,14 @@ def check_convergence(prev_cost, curr_cost, epsilon_=1e-3):
     return abs(prev_cost - curr_cost) < epsilon_
 
 
-def scale(x, method="z_score_normalization", dimension=1): 
+def scale(x, method="z_score_normalization"): 
     
     if method == "max_normalization": 
-        return _max_normalize(x, dimension)
+        return _max_normalize(x)
     if method == "mean_normalization": 
-        return _mean_normalization(x, dimension)
+        return _mean_normalization(x)
     if method == "z_score_normalization": 
-        return _z_score_normalization(x, dimension)
+        return _z_score_normalization(x)
     
     return Exception(f"Provided normalization method {method} is not valid")
 
@@ -179,7 +181,7 @@ def _mean_normalization(x):
     mean_per_feature = np.mean(x, axis=0)
     x_normalized = (x - mean_per_feature) / (max_per_feature - min_per_feature)
 
-    return x_normalized
+    return x_normalized, 
         
 
 def _z_score_normalization(x):
@@ -193,10 +195,10 @@ def _z_score_normalization(x):
     std_per_feature[std_per_feature == 0] = 1
     
     x_normalized = (x - mean_per_feature) / std_per_feature
-    return x_normalized
+    return x_normalized, mean_per_feature, std_per_feature
 
 
-def fit(x, y, iterations=1000, alpha_=1, lambda_=1, epsilon_=1e-3):
+def fit(x, y, iterations=1000, alpha_=0.01, lambda_=1, epsilon_=1e-3):
 
     n = x.shape[1] 
 
@@ -222,20 +224,58 @@ def fit(x, y, iterations=1000, alpha_=1, lambda_=1, epsilon_=1e-3):
     return w, b
 
 
-def train(x, y):
-    x_normalized = scale(x)
-    y_normalized, y_mean, y_std  = normalize_y(y)
+def train(x, y, alpha_=0.01, iterations=10000):
+    x_norm, x_mean, x_std = scale(x)
 
-    w, b = fit(x_normalized, y_normalized)
+    w_norm, b_norm = fit(x_norm, y, alpha_=alpha_, iterations=iterations)
 
-    y_hat = linear_model(w, x_normalized, b)
+    # === Пересчёт весов обратно ===
+    w = w_norm / x_std
+    b = b_norm - np.sum((w_norm * x_mean) / x_std)
 
-    y_hat = denormalize_y(y_hat, y_mean, y_std)
-    
-    return w, b, y_hat 
+    y_hat = x @ w + b
+
+    return w, b, y_hat
      
 
 
-    
+# === Синтетические данные ===
+np.random.seed(42)
 
-        
+m = 100  
+n = 2  
+
+X = np.random.rand(m, n) * 10  
+
+# настоящие коэффициенты
+true_w = np.array([3.5, -2.0])
+true_b = 4.0
+
+# создаем целевую переменную с шумом
+Y = X @ true_w + true_b + np.random.randn(m) * 2  # шум σ=2
+
+w, b, Y_pred = train(X, Y)
+
+print(Y)
+print(Y_pred)
+
+print("=== Настоящие параметры ===")
+print("w:", true_w, "b:", true_b)
+print("\n=== Найденные параметры ===")
+print("w:", w, "b:", b)
+
+# === Ошибка ===
+mse = np.mean((Y - Y_pred) ** 2)
+print("\nMean Squared Error:", mse)
+
+plt.figure()
+plt.scatter(Y, Y_pred)
+plt.xlabel("True Y")
+plt.ylabel("Predicted Y")
+
+min_val = min(Y.min(), Y_pred.min())
+max_val = max(Y.max(), Y_pred.max())
+plt.plot([min_val, max_val], [min_val, max_val])
+
+plt.title("True vs Predicted")
+plt.show()
