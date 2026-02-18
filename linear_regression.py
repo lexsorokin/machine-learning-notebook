@@ -9,7 +9,7 @@ def linear_model(w, x, b):
     For LR with one variable w & x are scalar
     For LR with multiple variables w & x are vectors
     """ 
-    return X @ w + b
+    return x @ w + b
 
 
 def compute_cost(x, y, w, b, lambda_ = 1):
@@ -138,10 +138,10 @@ def compute_gradient_vectorized(x, y, w, b, lambda_):
     return dj_dw, dj_db
 
 
-def check_convergence(prev_cost, curr_cost, epsilon_=1e-3):
+def check_convergence(prev_cost, curr_cost, epsilon_=1e-6):
     if prev_cost == 0: 
         return False
-    return abs(prev_cost - curr_cost) < epsilon_
+    return abs(prev_cost - curr_cost) / (prev_cost + 1e-8) < epsilon_
 
 
 def scale(x, method="z_score_normalization"): 
@@ -198,51 +198,68 @@ def _z_score_normalization(x):
     return x_normalized, mean_per_feature, std_per_feature
 
 
-def fit(x, y, iterations=1000, alpha_=0.01, lambda_=1, epsilon_=1e-3):
+def fit(x, y, iterations=1000, alpha_=0.01, lambda_=1, epsilon_=1e-3, verbose = True):
 
     n = x.shape[1] 
 
     w = np.zeros(n)
     b = 0
-  
-    prev_Jwb = 0
 
-    for _ in range(iterations): 
+    cost_history = []
+  
+
+    for i in range(iterations): 
         Jwb = compute_cost_vectorized(x, y, w, b, lambda_)
-        has_converged = check_convergence(prev_Jwb, Jwb, epsilon_=epsilon_)
-        if has_converged: 
-            break
+        cost_history.append(Jwb)
+
+        if i > 0: 
+            has_converged = check_convergence(cost_history[-2], Jwb, epsilon_=epsilon_)
+            if has_converged: 
+                print("\nConverged.")
+                break
         
-        prev_Jwb = Jwb
         
         dj_dw, dj_db = compute_gradient_vectorized(x, y, w, b, lambda_)
         tmp_w = w - (alpha_*dj_dw)
         tmp_b = b - (alpha_*dj_db)
 
-        w, b = tmp_w, tmp_b
+        # прогресс-бар
+        if verbose and i % max(1, iterations // 50) == 0:
+            progress = int(40 * i / iterations)
+            bar = "#" * progress + "-" * (40 - progress)
+            print(f"\r[{bar}] {int(100 * i / iterations)}% | Cost: {Jwb:.4f}", end="")
 
-    return w, b
+        w, b = tmp_w, tmp_b
+        
+    print("\nTraining finished.")
+
+
+    return w, b, cost_history
 
 
 def train(x, y, alpha_=0.01, iterations=10000):
+
     x_norm, x_mean, x_std = scale(x)
 
-    w_norm, b_norm = fit(x_norm, y, alpha_=alpha_, iterations=iterations)
+    w_norm, b_norm, cost_history = fit(
+        x_norm, y,
+        alpha_=alpha_,
+        iterations=iterations
+    )
 
-    # === Пересчёт весов обратно ===
     w = w_norm / x_std
     b = b_norm - np.sum((w_norm * x_mean) / x_std)
 
     y_hat = x @ w + b
 
-    return w, b, y_hat
+    return w, b, y_hat, cost_history
      
 
 
 # === Синтетические данные ===
 np.random.seed(42)
 
-m = 100  
+m = 1000  
 n = 2  
 
 X = np.random.rand(m, n) * 10  
@@ -254,10 +271,8 @@ true_b = 4.0
 # создаем целевую переменную с шумом
 Y = X @ true_w + true_b + np.random.randn(m) * 2  # шум σ=2
 
-w, b, Y_pred = train(X, Y)
+w, b, Y_pred, cost_history = train(X, Y)
 
-print(Y)
-print(Y_pred)
 
 print("=== Настоящие параметры ===")
 print("w:", true_w, "b:", true_b)
@@ -268,14 +283,26 @@ print("w:", w, "b:", b)
 mse = np.mean((Y - Y_pred) ** 2)
 print("\nMean Squared Error:", mse)
 
-plt.figure()
-plt.scatter(Y, Y_pred)
-plt.xlabel("True Y")
-plt.ylabel("Predicted Y")
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
+# --- True vs Pred ---
+axes[0].scatter(Y, Y_pred)
 min_val = min(Y.min(), Y_pred.min())
 max_val = max(Y.max(), Y_pred.max())
-plt.plot([min_val, max_val], [min_val, max_val])
+axes[0].plot([min_val, max_val], [min_val, max_val])
+axes[0].set_title("True vs Predicted")
+axes[0].set_xlabel("True Y")
+axes[0].set_ylabel("Predicted Y")
 
-plt.title("True vs Predicted")
+# --- Loss ---
+axes[1].plot(cost_history)
+axes[1].set_yscale("log")
+axes[1].set_title("Training Loss Curve")
+axes[1].set_xlabel("Iteration")
+axes[1].set_ylabel("Cost")
+
+print(Y)
+print(Y_pred)
+
+plt.tight_layout()
 plt.show()
